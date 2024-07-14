@@ -1,24 +1,12 @@
 <?php
+// get a taddy api user and api key
+// create a config.php in this style:
+// $taddy_user = 'xxxxx';
+// $taddy_api_key = 'xxxxx';
 
-        // 'Content-Type: application/json',
-        // "X-USER-ID: $taddy_user",
-        // "X-API-KEY: $taddy_api_key",
-?>
-<?php
-  require "config.php";
-?>
 
-<?php
-// Create connection. Variables in config.php
-$conn = new mysqli($servername, $username, $password, $dbname);
 
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-// Set the character set to utf8mb4
-$conn->set_charset("utf8mb4");
+require "config.php";
 
 // Fetch RSS feed function
 function fetch_rss_feed($url) {
@@ -78,153 +66,83 @@ function parse_rss_feed($rss, $limit = 3) {
     return ['podcast_info' => $podcast_info, 'episodes' => $episodes];
 }
 
-// Fetch podcast metadata from database
-$result = $conn->query("SELECT name, itunesId, description, imageUrl, rssUrl FROM taddypodcasts");
-$podcasts = [];
-while ($row = $result->fetch_assoc()) {
-    $podcasts[] = $row;
-}
-
 $selected_rssUrl = $_GET['rssUrl'] ?? null;
-
-if ($selected_rssUrl === null && !empty($podcasts)) {
-    $selected_rssUrl = $podcasts[0]['rssUrl'];
-}
 
 if ($selected_rssUrl === null) {
     $podcast_info = ['title' => 'No Podcast Selected', 'description' => 'Please select a podcast to load episodes.'];
     $episodes = [];
-$latest_episodes_cards = [];
-$latest_episodes_table = [];
+    $latest_episodes_table = [];
 } else {
     $rss_content = fetch_rss_feed($selected_rssUrl);
 
     if ($rss_content !== false) {
-
         // Fetch latest episodes (limit to 3)
         $podcast_data = parse_rss_feed($rss_content, 3);
         if (!isset($podcast_data['error'])) {
-                  $podcast_info = $podcast_data['podcast_info'];
-                  $episodes = $podcast_data['episodes'];
-              } else {
-                  die($podcast_data['error']);
-               }
+            $podcast_info = $podcast_data['podcast_info'];
+            $episodes = $podcast_data['episodes'];
+        } else {
+            die($podcast_data['error']);
+        }
 
         // Fetch latest episodes for table (limit to 10)
         $podcast_data_table = parse_rss_feed($rss_content, 10);
         if (!isset($podcast_data_table['error'])) {
-                  $latest_episodes_table = $podcast_data_table['episodes'];
-              } else {
-                  die($podcast_data_table['error']);
-              }
-
+            $latest_episodes_table = $podcast_data_table['episodes'];
         } else {
-        die("Error fetching RSS feed.");
-                }
+            die($podcast_data_table['error']);
         }
+    } else {
+        die("Error fetching RSS feed.");
+    }
+}
 
 $new_podcasts = [];
 if (isset($_GET['search'])) {
     $search_query = $_GET['search'];
 
-    $stmt = $conn->prepare("SELECT uuid, name, itunesId, description, imageUrl, rssUrl FROM taddypodcasts WHERE name = ?");
-    $stmt->bind_param("s", $search_query);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result->num_rows > 0) {
-        $new_podcasts = $result->fetch_all(MYSQLI_ASSOC);
+    $api_url = 'https://api.taddy.org/graphql';
+    $headers = [
+        'Content-Type: application/json',
+        "X-USER-ID: $taddy_user",
+        "X-API-KEY: $taddy_api_key",
+    ];
+    $query = [
+        'query' => '{
+            getPodcastSeries(name: "' . $search_query . '") {
+                uuid
+                name
+                itunesId
+                description
+                imageUrl
+                rssUrl
+            }
+        }'
+    ];
+
+    $ch = curl_init($api_url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($query));
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    if ($response !== false) {
+        $response_data = json_decode($response, true);
+        if (isset($response_data['data']['getPodcastSeries'])) {
+            $new_podcasts = $response_data['data']['getPodcastSeries'];
+            if (isset($new_podcasts['uuid'])) {
+                $new_podcasts = [$new_podcasts];
+            }
+        } else {
+            die("Error in Taddy API response.");
+        }
     } else {
-        $api_url = 'https://api.taddy.org/graphql';
-        $headers = [
-            'Content-Type: application/json',
-            "X-USER-ID: $taddy_user",
-            "X-API-KEY: $taddy_api_key",
-        ];
-        $query = [
-            'query' => '{
-                getPodcastSeries(name: "' . $search_query . '") {
-                    uuid
-                    name
-                    itunesId
-                    description
-                    imageUrl
-                    rssUrl
-                    itunesInfo {
-                        uuid
-                        baseArtworkUrlOf(size: 640)
-                    }
-                }
-            }'
-        ];
-
-        $ch = curl_init($api_url);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($query));
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        if ($response !== false) {
-            $response_data = json_decode($response, true);
-            if (isset($response_data['data']['getPodcastSeries'])) {
-                $new_podcasts = $response_data['data']['getPodcastSeries'];
-
-                if (isset($new_podcasts['uuid'])) {
-                    $new_podcasts = [$new_podcasts];
-                }
-            } else {
-                die("Error in Taddy API response.");
-            }
-        } else {
-            die("Error searching for podcasts.");
-        }
-    }
-    $stmt->close();
-}
-
-if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
-    $rssUrl = $_GET['rssUrl'];
-
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM taddypodcasts WHERE rssUrl = ?");
-    $stmt->bind_param("s", $rssUrl);
-    $stmt->execute();
-    $stmt->bind_result($count);
-    $stmt->fetch();
-    $stmt->close();
-
-    if ($count == 0) {
-        $rss_content = fetch_rss_feed($rssUrl);
-        if ($rss_content !== false) {
-            $podcast_data = parse_rss_feed($rss_content);
-            if (!isset($podcast_data['error'])) {
-                $podcast_info = $podcast_data['podcast_info'];
-                $uuid = ''; // Default empty value for uuid
-                $itunesId = ''; // Default empty value for itunesId
-
-                // Fetch uuid and itunesId from $new_podcasts if available
-                foreach ($new_podcasts as $podcast) {
-                    if ($podcast['rssUrl'] == $rssUrl) {
-                        $uuid = $podcast['uuid'] ?? '';
-                        $itunesId = $podcast['itunesId'] ?? '';
-                        break;
-                    }
-                }
-
-                $stmt = $conn->prepare("INSERT INTO taddypodcasts (name, itunesId, description, imageUrl, rssUrl) VALUES (?, ?, ?, ?, ?)");
-                $stmt->bind_param("sssss", $podcast_info['title'], $itunesId, $podcast_info['description'], $podcast_info['imageUrl'], $rssUrl);
-                $stmt->execute();
-                $stmt->close();
-            } else {
-                die($podcast_data['error']);
-            }
-        } else {
-            die("Error fetching RSS feed.");
-        }
+        die("Error searching for podcasts.");
     }
 }
 ?>
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -233,296 +151,156 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Podcast Downloader</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
+    <style>
         .thumbnail-img {
             max-width: 200px !important;
         }
-
         .progress-bar {
-        transition: width 0.5s ease; /* Smooth transition for progress bar */
+            transition: width 0.5s ease;
         }
-</style>
-
+    </style>
 </head>
 <body>
+    <div class="container-fluid">
+        <div class="container mt-5">
+            <h1>Podcast Downloader</h1>
+            <form method="get">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" placeholder="Search for podcasts" name="search" aria-label="Search for podcasts">
+                    <button class="btn btn-outline-secondary" type="submit">Search for Podcast</button>
+                </div>
+            </form>
 
-  <div class="container-fluid">
-
-        <?php //include "nav.php"; ?>
-
-<div class="container mt-5">
-
-    <!-- Taddy Podcast Search Form -->
-    <h1>Podcast Downloader</h1>
-
-    <form method="get">
-        <div class="input-group mb-3">
-            <input type="text" class="form-control" placeholder="Search for podcasts" name="search" aria-label="Search for podcasts">
-            <button class="btn btn-outline-secondary" type="submit">Search for Podcast</button>
-        </div>
-    </form>
-
-
-
-    <!-- Podcast Artworks Grid -->
-    <!-- <div class="row">
-        <?php
-        // $count = 0;
-        // foreach ($podcasts as $podcast):
-        //     ?>
-        //     <div class="col-1 mb-2 thumbnail-row">
-        //         <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>">
-        //             <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" alt="Podcast Artwork" class="thumbnail-img">
-        //         </a>
-        //     </div>
-        //     <?php
-        //     $count++;
-        //     if ($count % 12 == 0) {
-        //         echo '</div><div class="row mb-1 thumbnail-row">';
-        //     }
-        // endforeach;
-        ?>
-    </div> -->
-
-
-
-    <!-- Taddy Podcast Search Results -->
-    <?php if (!empty($new_podcasts)): ?>
-        <h2>Search Results</h2>
-        <div class="row mt-5">
-            <?php foreach ($new_podcasts as $podcast): ?>
-                <div class="col-md-2">
-                    <div class="card mb-4">
-                        <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" class="card-img-top thumbnail-img" alt="Podcast Artwork">
-</div>
-</div>
-
-                    <div class="col-md-10">
-                      <div class="card-body">
-                            <h5 class="card-title"><?php echo htmlspecialchars($podcast['name']); ?></h5>
-                            <p class="card-text"><?php echo $podcast['description']; ?></p>
-                            <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>" class="btn btn-primary">Load Podcast</a>
+            <?php if (!empty($new_podcasts)): ?>
+                <h2>Search Results</h2>
+                <div class="row mt-5">
+                    <?php foreach ($new_podcasts as $podcast): ?>
+                        <div class="col-md-2">
+                            <div class="card mb-4">
+                                <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" class="card-img-top thumbnail-img" alt="Podcast Artwork">
+                            </div>
                         </div>
+                        <div class="col-md-10">
+                            <div class="card-body">
+                                <h5 class="card-title"><?php echo htmlspecialchars($podcast['name']); ?></h5>
+                                <p class="card-text overflow-auto bg-light" style="max-height: 114px;"><?php echo $podcast['description']; ?></p>
+                                <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>" class="btn btn-primary">Load Podcast</a>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['rssUrl'])): ?>
+                <div class="row mt-5">
+                    <div class="col-md-2">
+                        <img src="<?php echo htmlspecialchars($podcast_info['imageUrl']); ?>" alt="Podcast Artwork" class="img-fluid thumbnail-img">
+                    </div>
+                    <div class="col-md-10">
+                        <h1><?php echo htmlspecialchars($podcast_info['title']); ?></h1>
+                        <p class="card-text overflow-auto bg-light" style="max-height: 140px;"><?php echo $podcast_info['description']; ?></p>
                     </div>
                 </div>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
 
-
-<!-- Podcast Series Banner -->
-
-          <?php if (isset($_GET['rssUrl'])): ?>
-  <div class="row mt-5">
-        <div class="col-md-2">
-            <img src="<?php echo htmlspecialchars($podcast_info['imageUrl']); ?>" alt="Podcast Artwork" class="img-fluid thumbnail-img">
-        </div>
-        <div class="col-md-10">
-            <h1><?php echo htmlspecialchars($podcast_info['title']); ?></h1>
-            <p><?php echo $podcast_info['description']; ?></p>
+                <div id="episodes-table" class="row mt-5">
+                    <h2 class="mt-5">Latest Episodes</h2>
+                    <div class="table-wrapper">
+                        <table class="table table-bordered table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th width="20%">Episode Title</th>
+                                    <th width="40%">Description</th>
+                                    <th width="20%">Published Date</th>
+                                    <th width="10%">Play</th>
+                                    <th width="10%">Download</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($latest_episodes_table as $episode): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($episode['title']); ?></td>
+                                        <td>
+                                            <div class="overflow-auto bg-light" style="max-height: 50px;">
+                                                <?php echo $episode['description']; ?>
+                                            </div>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($episode['pub_date']); ?></td>
+                                        <td>
+                                            <?php if (!empty($episode['audio_url'])): ?>
+                                                <audio controls>
+                                                    <source src="<?php echo htmlspecialchars($episode['audio_url']); ?>" type="audio/mpeg">
+                                                    Your browser does not support the audio element.
+                                                </audio>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($episode['audio_url'])): ?>
+                                                <button class="btn btn-primary download-btn" data-url="<?php echo htmlspecialchars($episode['audio_url']); ?>" data-title="<?php echo htmlspecialchars($podcast_info['title']); ?>" data-episode="<?php echo htmlspecialchars($episode['title']); ?>">Download</button>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="download-form" class="row mt-5" style="display:none;">
+                    <div class="col-md-6">
+                        <h2>Download Episode</h2>
+                        <form id="downloadPodcastForm" method="post" action="download.php">
+                            <div class="mb-3">
+                                <label for="podcastUrl" class="form-label">Podcast URL</label>
+                                <input type="text" class="form-control" id="podcastUrl" name="podcast_url" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label for="savePath" class="form-label">Save as</label>
+                                <input type="text" class="form-control" id="savePath" name="save_path" readonly>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Download</button>
+                        </form>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('.download-btn').click(function() {
+                var podcastUrl = $(this).data('url');
+                var podcastTitle = $(this).data('title');
+                var episodeTitle = $(this).data('episode');
+                var savePath = podcastTitle.replace(/[^a-z0-9]/gi, '_') + '_' + episodeTitle.replace(/[^a-z0-9]/gi, '_') + '.mp3';
 
-<!-- Podcast Table -->
-    <div class="row mt-5">
+                $('#podcastUrl').val(podcastUrl);
+                $('#savePath').val(savePath);
 
-    <style>
+                $('#episodes-table').hide();
+                $('#download-form').show();
+            });
 
-    .table-wrapper {
-    max-height: 600px;
-    overflow: auto;
-    display:inline-block;
-    }
-    th {
-    top: 0;
-    position: sticky;
-    background: #e5d2f1 !important;
-    color: black;
-    }
-    </style>
+            $('#downloadPodcastForm').submit(function(event) {
+                event.preventDefault();
 
-
-    <?php
-
-                                echo "<table class='table table-bordered table-striped table-hover table-wrapper'>";
-
-                                    echo "<thead>";
-                                    echo "<th width='20%'>Episode Title</th>";
-                                    echo "<th width='40%'>Description</th>";
-                                    echo "<th width='20%'>Published Date</th>";
-                                    echo "<th width='10%'>Play</th>";
-                                    echo "<th width='10%'>Download</th>";
-
-
-                                    echo "</thead>";
-                                    echo "<tbody>";
-
-?>
-
-
-
-  <?php foreach ($latest_episodes_table as $episode): ?>
-
-  <tr>
-
-  <td><?php echo htmlspecialchars($episode['title']); ?></td>
-
-  <td>
-    <div class="overflow-auto bg-light" style="max-height: 50px;">
-     <?php echo $episode['description']; ?>
-   </div>
-   </td>
-
-  <td><?php echo htmlspecialchars($episode['pub_date']); ?></td>
-</tr>
-
-
-<tr>
-
-<td colspan=3>
-<div class="text-center">
-      <!-- Waveform Container -->
-      <div id="waveform-<?php echo $episode['id']; ?>"></div>
-</div>
-</td>
-
-</tr>
-
-<?php endforeach; ?>
-</div>
-
-
-
-<!-- Podcast Cards -->
-    <h2 class="mt-5">Latest Episodes</h2>
-    <div class="row">
-      <?php foreach ($episodes as $episode): ?>
-            <!--   <div class="col-md-4">
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title"><?php //echo htmlspecialchars($episode['title']); ?></h5>
-                            <div class="card-text overflow-auto bg-light" style="max-height: 200px;min-height: 200px;"> -->
-                              <?php //echo $episode['description']; ?>
-                            <!--</div>
-                         <p class="card-text"><?php //echo $episode['description']; ?></p> -->
-                        <!-- <p class="card-text"><small class="text-muted"><?php //echo htmlspecialchars($episode['pub_date']); ?></small></p>
-                        <audio controls>
-                            <source src="<?php //echo htmlspecialchars($episode['audio_url']); ?>" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio> -->
-
-      <!-- <div class="container mt-5">
-       <form id="downloadForm">
-           <div class="mb-3">
-               <label for="podcast_url" class="form-label">Podcast URL:</label>
-               <input type="text" id="podcast_url" name="podcast_url" class="form-control" value="<?php //echo htmlspecialchars($episode['audio_url']); ?>" required>
-           </div>
-           <div class="mb-3">
-               <label for="save_path" class="form-label">Save Path:</label>
-               <input type="text" id="save_path" name="save_path" class="form-control" value="clips/testdown.mp3" required>
-           </div>
-           <button type="submit" class="btn btn-primary">Download Podcast</button>
-       </form>
-       <div class="progress mt-3" style="height: 30px;">
-           <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-       </div>-->
-   </div>
-
-   <script>
-       document.getElementById('downloadForm').addEventListener('submit', function(event) {
-           event.preventDefault();
-           const form = event.target;
-           const formData = new FormData(form);
-           const xhr = new XMLHttpRequest();
-
-           xhr.open('POST', 'download.php', true);
-
-           xhr.onreadystatechange = function() {
-               if (xhr.readyState === XMLHttpRequest.DONE) {
-                   if (xhr.status === 200) {
-                       const response = JSON.parse(xhr.responseText);
-                       if (response.status === 'success') {
-                           alert('Download complete!');
-                       } else {
-                           alert('An error occurred during the download.');
-                       }
-                   }
-               }
-           };
-
-           xhr.upload.onprogress = function(event) {
-               if (event.lengthComputable) {
-                   const percentComplete = (event.loaded / event.total) * 100;
-                   const progressBar = document.getElementById('progress-bar');
-                   progressBar.style.width = percentComplete + '%';
-                   progressBar.setAttribute('aria-valuenow', percentComplete);
-                   progressBar.textContent = Math.round(percentComplete) + '%';
-               }
-           };
-
-           xhr.send(formData);
-
-           // Simulate progress for small files
-           const progressBar = document.getElementById('progress-bar');
-           let simulatedProgress = 0;
-           const interval = setInterval(() => {
-               simulatedProgress += 10;
-               progressBar.style.width = simulatedProgress + '%';
-               progressBar.setAttribute('aria-valuenow', simulatedProgress);
-               progressBar.textContent = simulatedProgress + '%';
-               if (simulatedProgress >= 100) {
-                   clearInterval(interval);
-               }
-           }, 100);
-       });
-   </script>
-
-                    </div>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    </div>
-
-  <?php endif; ?>
-
-
-
-
-</div>
-
-<!-- end container-fluid -->
-</div>
-
-
-<!-- for wavesurfer -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/wavesurfer.js/3.3.3/wavesurfer.min.js"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize Wavesurfer
-        var wavesurfer = WaveSurfer.create({
-            container: '#waveform',
-            waveColor: 'violet',
-            progressColor: 'purple'
+                $.ajax({
+                    url: 'download.php',
+                    type: 'POST',
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        var res = JSON.parse(response);
+                        if (res.status === 'success') {
+                            alert('Download successful!');
+                        } else {
+                            alert('Download failed: ' + res.error);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('An error occurred: ' + error);
+                    }
+                });
+            });
         });
-
-        // Load the audio file
-        wavesurfer.load('<?php echo $episode['audio_url']; ?>');
-
-        // Optional: Add play/pause control
-        var playButton = document.createElement('button');
-        playButton.innerHTML = 'Play/Pause';
-        playButton.addEventListener('click', function() {
-            wavesurfer.playPause();
-        });
-
-        document.body.appendChild(playButton);
-    });
-</script>
-
-
-
+    </script>
 </body>
 </html>
