@@ -231,12 +231,12 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Podcast Directory</title>
+    <title>Podcast Downloader</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
         .thumbnail-img {
-            max-width: 100px !important;
+            max-width: 200px !important;
         }
 
         .progress-bar {
@@ -249,53 +249,57 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 
   <div class="container-fluid">
 
-        <?php include "nav.php"; ?>
+        <?php //include "nav.php"; ?>
 
 <div class="container mt-5">
 
     <!-- Taddy Podcast Search Form -->
-    <h1>Podcast Directory</h1>
+    <h1>Podcast Downloader</h1>
 
     <form method="get">
         <div class="input-group mb-3">
             <input type="text" class="form-control" placeholder="Search for podcasts" name="search" aria-label="Search for podcasts">
-            <button class="btn btn-outline-secondary" type="submit">Search</button>
+            <button class="btn btn-outline-secondary" type="submit">Search for Podcast</button>
         </div>
     </form>
 
 
 
     <!-- Podcast Artworks Grid -->
-    <div class="row">
+    <!-- <div class="row">
         <?php
-        $count = 0;
-        foreach ($podcasts as $podcast):
-            ?>
-            <div class="col-1 mb-2 thumbnail-row">
-                <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>">
-                    <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" alt="Podcast Artwork" class="thumbnail-img">
-                </a>
-            </div>
-            <?php
-            $count++;
-            if ($count % 12 == 0) {
-                echo '</div><div class="row mb-1 thumbnail-row">';
-            }
-        endforeach;
+        // $count = 0;
+        // foreach ($podcasts as $podcast):
+        //     ?>
+        //     <div class="col-1 mb-2 thumbnail-row">
+        //         <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>">
+        //             <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" alt="Podcast Artwork" class="thumbnail-img">
+        //         </a>
+        //     </div>
+        //     <?php
+        //     $count++;
+        //     if ($count % 12 == 0) {
+        //         echo '</div><div class="row mb-1 thumbnail-row">';
+        //     }
+        // endforeach;
         ?>
-    </div>
+    </div> -->
 
 
 
     <!-- Taddy Podcast Search Results -->
     <?php if (!empty($new_podcasts)): ?>
         <h2>Search Results</h2>
-        <div class="row">
+        <div class="row mt-5">
             <?php foreach ($new_podcasts as $podcast): ?>
-                <div class="col-md-4">
+                <div class="col-md-2">
                     <div class="card mb-4">
-                        <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" class="card-img-top" alt="Podcast Artwork">
-                        <div class="card-body">
+                        <img src="<?php echo htmlspecialchars($podcast['imageUrl']); ?>" class="card-img-top thumbnail-img" alt="Podcast Artwork">
+</div>
+</div>
+
+                    <div class="col-md-10">
+                      <div class="card-body">
                             <h5 class="card-title"><?php echo htmlspecialchars($podcast['name']); ?></h5>
                             <p class="card-text"><?php echo $podcast['description']; ?></p>
                             <a href="?rssUrl=<?php echo urlencode($podcast['rssUrl']); ?>" class="btn btn-primary">Load Podcast</a>
@@ -310,11 +314,11 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 <!-- Podcast Series Banner -->
 
           <?php if (isset($_GET['rssUrl'])): ?>
-    <div class="row mt-5">
-        <div class="col-md-4">
-            <img src="<?php echo htmlspecialchars($podcast_info['imageUrl']); ?>" alt="Podcast Artwork" class="img-fluid" style="max-width: 400px;">
+  <div class="row mt-5">
+        <div class="col-md-2">
+            <img src="<?php echo htmlspecialchars($podcast_info['imageUrl']); ?>" alt="Podcast Artwork" class="img-fluid thumbnail-img">
         </div>
-        <div class="col-md-8">
+        <div class="col-md-10">
             <h1><?php echo htmlspecialchars($podcast_info['title']); ?></h1>
             <p><?php echo $podcast_info['description']; ?></p>
         </div>
@@ -346,11 +350,11 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 
                                     echo "<thead>";
                                     echo "<th width='20%'>Episode Title</th>";
-                                    echo "<th width='60%'>Description</th>";
+                                    echo "<th width='40%'>Description</th>";
                                     echo "<th width='20%'>Published Date</th>";
+                                    echo "<th width='10%'>Play</th>";
+                                    echo "<th width='10%'>Download</th>";
 
-
-                                    //echo "<th>www</th>";
 
                                     echo "</thead>";
                                     echo "<tbody>";
@@ -358,7 +362,7 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 ?>
 
 
-<?php //foreach ($episodes as $episode): ?>
+
   <?php foreach ($latest_episodes_table as $episode): ?>
 
   <tr>
@@ -394,25 +398,26 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
 <!-- Podcast Cards -->
     <h2 class="mt-5">Latest Episodes</h2>
     <div class="row">
-        <?php foreach ($episodes as $episode): ?>
-            <div class="col-md-4">
+      <?php foreach ($episodes as $episode): ?>
+            <!--   <div class="col-md-4">
                 <div class="card mb-4">
                     <div class="card-body">
-                        <h5 class="card-title"><?php echo htmlspecialchars($episode['title']); ?></h5>
-                            <div class="card-text overflow-auto bg-light" style="max-height: 200px;min-height: 200px;">
-                              <?php echo $episode['description']; ?></div>
-                        <!-- <p class="card-text"><?php echo $episode['description']; ?></p> -->
-                        <p class="card-text"><small class="text-muted"><?php echo htmlspecialchars($episode['pub_date']); ?></small></p>
+                        <h5 class="card-title"><?php //echo htmlspecialchars($episode['title']); ?></h5>
+                            <div class="card-text overflow-auto bg-light" style="max-height: 200px;min-height: 200px;"> -->
+                              <?php //echo $episode['description']; ?>
+                            <!--</div>
+                         <p class="card-text"><?php //echo $episode['description']; ?></p> -->
+                        <!-- <p class="card-text"><small class="text-muted"><?php //echo htmlspecialchars($episode['pub_date']); ?></small></p>
                         <audio controls>
-                            <source src="<?php echo htmlspecialchars($episode['audio_url']); ?>" type="audio/mpeg">
+                            <source src="<?php //echo htmlspecialchars($episode['audio_url']); ?>" type="audio/mpeg">
                             Your browser does not support the audio element.
-                        </audio>
+                        </audio> -->
 
-      <div class="container mt-5">
+      <!-- <div class="container mt-5">
        <form id="downloadForm">
            <div class="mb-3">
                <label for="podcast_url" class="form-label">Podcast URL:</label>
-               <input type="text" id="podcast_url" name="podcast_url" class="form-control" value="<?php echo htmlspecialchars($episode['audio_url']); ?>" required>
+               <input type="text" id="podcast_url" name="podcast_url" class="form-control" value="<?php //echo htmlspecialchars($episode['audio_url']); ?>" required>
            </div>
            <div class="mb-3">
                <label for="save_path" class="form-label">Save Path:</label>
@@ -422,7 +427,7 @@ if (isset($_GET['rssUrl']) && !empty($_GET['rssUrl'])) {
        </form>
        <div class="progress mt-3" style="height: 30px;">
            <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-       </div>
+       </div>-->
    </div>
 
    <script>
